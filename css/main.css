@@ -1,0 +1,84 @@
+* {
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+
+    background:
+        radial-gradient(
+            circle at 50% 0%,
+            rgba(68, 50, 36, .25),
+            transparent 40%
+        ),
+        linear-gradient(
+            135deg,
+            var(--black-950),
+            var(--black-900) 55%,
+            var(--brown-900)
+        );
+
+    color: var(--text);
+
+    font-family:
+        Georgia,
+        "Times New Roman",
+        serif;
+}
+
+button,
+input,
+textarea,
+select {
+    font-family: inherit;
+}
+
+button {
+    cursor: pointer;
+}
+
+::selection {
+    background: var(--gold);
+    color: var(--black-950);
+}
+
+.screen {
+    display: none;
+}
+
+.screen.active {
+    display: block;
+}
+
+.eyebrow {
+    color: var(--gold);
+
+    font-size: .72rem;
+    font-weight: 700;
+
+    letter-spacing: 4px;
+    text-transform: uppercase;
+}
+
+.section-label {
+    color: var(--gold);
+
+    font-size: .68rem;
+    font-weight: 700;
+
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.text-muted-game {
+    color: var(--text-muted);
+}
+
+.gold-text {
+    color: var(--gold);
+}
