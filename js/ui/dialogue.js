@@ -1,4 +1,4 @@
-    export function updateStory(
+export function updateStory(
     speaker,
     text
 ) {
