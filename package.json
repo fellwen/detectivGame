@@ -1,5 +1,12 @@
 {
-  "dependencies": {
-    "bootstrap": "^5.3.3"
-  }
+  "name": "grace-hotel-detective",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Последняя ночь в отеле Грейс",
+  "scripts": {
+    "start": "node scripts/server.mjs",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": { "node": ">=20" }
 }

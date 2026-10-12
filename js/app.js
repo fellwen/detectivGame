@@ -1,25 +1,184 @@
-import {characters} from './data/characters.js';
-import {evidence} from './data/evidence.js';
-import {stages} from './data/stages.js';
-import {loadState,saveState,clearState} from './modules/save-manager.js';
-import {renderEvidencePage,openEvidence,addEvidence} from './modules/investigation.js';
-import {renderPeople,openPerson} from './modules/interrogation.js';
-import {renderStage} from './modules/quiz.js';
-import {byId,escapeHTML,toast,showModal} from './modules/dom.js';
+import { victim, characterById } from './data/characters.js';
+import { locationById } from './data/locations.js';
+import { loadState, saveState, clearState, createState } from './modules/save-manager.js';
+import { visitRoom, readEvidence, canOpenInterrogation, assessPerson, readAdditional, completeStage, accuse, deferCase, resumeCase } from './modules/case.js';
+import { renderEvidencePage, evidenceDocument, renderRooms, roomDocument } from './modules/investigation.js';
+import { renderPeople, personDocument } from './modules/interrogation.js';
+import { renderStage } from './modules/quiz.js';
+import { renderHome, renderJournal, renderEnding, journalText } from './modules/views.js';
+import { byId, escapeHTML, showModal, hideModal, toast } from './modules/dom.js';
 
-let state=loadState();
-let currentView='home';
-const app=byId('app');
+const loaded = loadState();
+let state = loaded.state;
+let saveTimer;
+const app = byId('app');
+const validViews = new Set(['home', 'stage', 'rooms', 'people', 'evidence', 'journal']);
 
-function renderHome(){return `<section class="hero-panel mb-4"><div class="hero-copy"><div class="eyebrow mb-3">Гренобль · Альпы · Зима 1928 года</div><h1>Последняя ночь<br>в отеле <span style="color:var(--paper)">Грейс</span></h1><div class="rule-line"></div><p class="hero-subtitle">ДЕЛО № СОЗ-1 / 72438 · УБИЙСТВО В ЗАПЕРТОЙ КОМНАТЕ</p><p class="mt-3 mb-4">Снежная буря отрезала отель от внешнего мира. Миллионер Аркадий Вельский найден мёртвым в кабинете, запертом изнутри. Полиция далеко. Расследование начинает человек, которому все готовы доверять.</p><button class="btn btn-brass btn-lg" data-view="stage">Продолжить расследование <span aria-hidden="true">→</span></button><button class="btn btn-outline-brass btn-lg ms-2 mt-2 mt-sm-0" data-open-report>Открыть отчёт майора</button></div></section><div class="row g-3 mb-5"><div class="col-6 col-lg-3"><div class="stat-card"><div class="small-mono">ФИГУРАНТЫ</div><div class="stat-number">07</div><div class="text-muted-custom small">У каждого есть секрет</div></div></div><div class="col-6 col-lg-3"><div class="stat-card"><div class="small-mono">ЭТАПЫ</div><div class="stat-number">04</div><div class="text-muted-custom small">От осмотра до обвинения</div></div></div><div class="col-6 col-lg-3"><div class="stat-card"><div class="small-mono">УЛИКИ</div><div class="stat-number">${state.foundEvidence.length.toString().padStart(2,'0')}</div><div class="text-muted-custom small">Материалы в архиве</div></div></div><div class="col-6 col-lg-3"><div class="stat-card"><div class="small-mono">СТАТУС</div><div class="stat-number" style="font-size:1.1rem">${state.finished?'ЗАКРЫТО':'ОТКРЫТО'}</div><div class="text-muted-custom small">Дело ещё не раскрыто</div></div></div></div><section class="section-heading"><div><div class="eyebrow">План работы</div><h2 class="mt-2">Ход расследования</h2></div><span class="tag">АРХИВ МАЙОРА</span></section><div class="row g-3">${stages.map(s=>`<div class="col-md-6"><article class="stage-card p-4 ${s.id>state.stage?'locked':''}"><div class="d-flex justify-content-between"><span class="small-mono">ЭТАП 0${s.id}</span><span class="tag">${s.id<state.stage?'ПРОЙДЕН':s.id===state.stage?'ТЕКУЩИЙ':'ЗАКРЫТ'}</span></div><h3 class="h5 mt-3">${escapeHTML(s.title)}</h3><p class="text-muted-custom mb-3">${escapeHTML(s.description)}</p><button class="btn btn-outline-brass btn-sm" data-stage-link="${s.id}" ${s.id>state.stage?'disabled':''}>${s.id<state.stage?'Просмотреть этап':s.id===state.stage?'Продолжить':'Сначала завершите предыдущий'}</button></article></div>`).join('')}</div><div class="archive-card mt-4"><div class="eyebrow">Важное предупреждение</div><p class="mb-0 mt-2">Не путайте мотив с доказательством. Платок, пуговица и угрожающая записка выглядят убедительно, но их происхождение и время появления нужно проверить. Главная задача — восстановить хронологию.</p></div>`;}
-function renderRooms(){const rooms=[{id:'office',name:'Кабинет Аркадия',desc:'Место обнаружения тела. Запертая дверь, коньяк и разбитый бокал.',items:['Бутылка коньяка','Замок и царапины','Пуговица Николая','Записка с угрозой']},{id:'kotroom',name:'Комната сыщика',desc:'Личные вещи Виктора, рабочие бумаги и следы, которые он называет подброшенными.',items:['Компрометирующие документы','Перчатка со следами цианида']},{id:'lounge',name:'Гостиная',desc:'Здесь, по словам Виктора, он играл в карты с Еленой и доктором.',items:['Показания Дуни','Показания доктора Сомова']},{id:'bedroom',name:'Комната Плюшкина',desc:'Среди вещей антиквара обнаруживается подтверждение давнего долга.',items:['Расписка о долге']}];return `<section class="section-heading"><div><div class="eyebrow">Этап I · Место преступления</div><h1 class="h2 mt-2">Осмотр помещений</h1></div><span class="tag">4 ЛОКАЦИИ</span></section><p class="text-muted-custom mb-4">Выберите помещение, чтобы просмотреть описание и открыть доступные материалы. Фото пока представлены аккуратными заглушками — замените их своими файлами, когда они будут готовы.</p><div class="row g-3">${rooms.map(r=>`<div class="col-md-6"><article class="room-card"><div class="photo-placeholder mb-3"><div><span>ФОТО ЛОКАЦИИ</span><p class="mb-0 mt-2">${escapeHTML(r.name)}</p></div></div><h3>${escapeHTML(r.name)}</h3><p class="text-muted-custom">${escapeHTML(r.desc)}</p><button class="btn btn-outline-brass btn-sm" data-room="${r.id}">Осмотреть помещение</button></article></div>`).join('')}</div>`;}
-function openRoom(id){const map={office:{name:'Кабинет Аркадия',ids:['decanter','lock','button','note','report','autopsy']},kotroom:{name:'Комната Виктора',ids:['forged','glove']},lounge:{name:'Гостиная',ids:['witness','somov']},bedroom:{name:'Комната Плюшкина',ids:['dues']}};const room=map[id];if(!room)return;const list=room.ids.map(evidenceId=>evidence.find(x=>x.id===evidenceId)).filter(x=>x&&x.stage<=state.stage);showModal(room.name,`<p>Внимательно изучите доступные материалы. Не все предметы являются уликами убийства: некоторые объясняют старые конфликты.</p>${list.length?list.map(e=>`<div class="clue-row"><div class="clue-mark">${e.icon}</div><div class="flex-grow-1"><strong>${escapeHTML(e.title)}</strong><p class="text-muted-custom mb-2">${escapeHTML(e.summary)}</p><button class="btn btn-outline-brass btn-sm" data-evidence="${e.id}">Изучить документ</button></div></div>`).join(''):'<p>На этом этапе значимых материалов не обнаружено.'}</p>`);}
-function render(){byId('evidenceCount').textContent=String(state.foundEvidence.length);document.querySelectorAll('[data-view]').forEach(el=>{el.classList.toggle('active',el.dataset.view===currentView);});const views={home:renderHome,stage:()=>renderStage(state),rooms:renderRooms,people:renderPeople,evidence:()=>renderEvidencePage(state)};app.innerHTML=(views[currentView]||renderHome)();saveState(state);}
-function go(view){if(view==='stage'&&state.stage>4)state.stage=4;currentView=view;render();window.scrollTo({top:0,behavior:'smooth'});}
-function submitStage(stage){const feedback=byId('stageFeedback');if(!feedback)return;let correct=false,message='';if(stage===1){state.answers.exam1=byId('exam1').checked;state.answers.exam2=byId('exam2').checked;state.answers.exam3=byId('exam3').checked;state.notes.stage1=byId('stageNote').value.trim();correct=state.answers.exam1&&state.answers.exam3&&!state.answers.exam2;message=correct?'Верно. Яд был в напитке заранее, а пуговица может относиться к более ранней драке. Время смерти ещё нужно проверить.':'Есть недочёт. Важны заранее отравленный коньяк и сомнительность первоначального времени смерти. Пуговица не доказывает присутствие Николая в момент убийства.';}else if(stage===2){state.answers.clueDunya=byId('clueDunya').checked;state.answers.clueSomov=byId('clueSomov').checked;state.answers.clueMotive=byId('clueMotive').checked;state.notes.stage2=byId('stageNote').value.trim();correct=state.answers.clueDunya&&state.answers.clueSomov&&!state.answers.clueMotive;message=correct?'Верно. Показания Дуни и Сомова создают два независимых противоречия версии Виктора.':'Перепроверьте выбор. Свидетельство Дуни и время смерти по Сомову важны; наличие мотива не даёт алиби.';}else if(stage===3){state.answers.reviewDocs=byId('reviewDocs').checked;state.answers.reviewGlove=byId('reviewGlove').checked;state.answers.reviewDebt=byId('reviewDebt').checked;state.notes.stage3=byId('stageNote').value.trim();correct=state.answers.reviewDocs&&state.answers.reviewGlove&&!state.answers.reviewDebt;message=correct?'Верно. Документы дают Виктору мотив, перчатка связывает его комнату с ядом, а расписка доказывает лишь долг.':'Нужно сопоставить документы и перчатку. Расписка подтверждает финансовый конфликт, но не доказывает отравление.';}else{const selected=byId('verdictSelect').value;state.notes.verdict=byId('verdictReason').value.trim();if(!selected){feedback.className='answer-feedback incorrect';feedback.textContent='Выберите обвиняемого перед вынесением вердикта.';return;}correct=selected==='kot';state.finished=true;state.ending=correct?'justice':'wrong-accusation';if(correct){addEvidence(state,'confession');message='Вы раскрыли дело. Все ключевые линии сходятся на Викторе Дронове: заранее отравленный коньяк, конфликт из-за документов, ложная хронология и показания свидетелей.';}else{message='Обвинение не выдерживает проверки. Мотив сам по себе не доказывает убийство. Вернитесь к показаниям Дуни и Сомова, документам Виктора и бутылке коньяка.';state.finished=false;state.ending=null;}}
-feedback.className=`answer-feedback ${correct?'correct':'incorrect'}`;feedback.textContent=message;if(correct&&stage<4){state.stage=stage+1;for(const id of stages.find(s=>s.id===state.stage).unlocks)addEvidence(state,id);saveState(state);setTimeout(()=>{toast('Этап завершён','Открыты новые материалы дела.');render();},1000);}else if(correct&&stage===4){saveState(state);setTimeout(()=>showModal('Правосудие',`<div class="final-verdict"><div class="document-stamp">ДЕЛО РАСКРЫТО</div><h3 class="mt-4">Убийца — Виктор Дронов</h3><p>Сыщик отравил коньяк заранее, чтобы скрыть время преступления и обеспечить себе алиби. Аркадий шантажировал его за сфабрикованное дело. Свидетельство Дуни, оценка доктора и документы из комнаты сыщика разрушили его версию.</p><p>Когда буря утихнет, материалы будут переданы полиции. В архив добавлена записка Виктора.</p></div>`),650);}
-saveState(state);}
+function showSaveStatus(success) {
+  byId('saveStatus').textContent = success ? 'Прогресс сохранён' : 'Сохранение недоступно: оставьте вкладку открытой';
+  byId('saveStatus').classList.toggle('error-text', !success);
+}
+function persist(immediate = false) {
+  clearTimeout(saveTimer);
+  if (immediate) showSaveStatus(saveState(state));
+  else {
+    byId('saveStatus').textContent = 'Сохраняю записи…';
+    saveTimer = setTimeout(() => showSaveStatus(saveState(state)), 300);
+  }
+}
+function render() {
+  const views = { home: renderHome, stage: state.finished && state.viewStage === 4 ? renderEnding : renderStage, rooms: renderRooms, people: renderPeople, evidence: renderEvidencePage, journal: renderJournal };
+  app.innerHTML = (views[state.view] ?? renderHome)(state);
+  byId('evidenceCount').textContent = String(state.foundEvidence.length);
+  byId('currentStage').textContent = state.finished ? 'Итог дела' : `Этап ${state.stage} / 4`;
+  document.querySelectorAll('.app-navbar [data-view]').forEach(link => {
+    const active = link.dataset.view === state.view;
+    link.classList.toggle('active', active);
+    if (active) link.setAttribute('aria-current', 'page');
+    else link.removeAttribute('aria-current');
+  });
+}
+function go(view, stage = null, push = true) {
+  if (!validViews.has(view)) return;
+  if (stage !== null && (!Number.isInteger(stage) || stage < 1 || stage > state.stage)) return;
+  hideModal();
+  state.view = view;
+  if (view === 'stage') state.viewStage = stage ?? state.stage;
+  if (push && location.hash !== `#${view}`) history.pushState(null, '', `#${view}`);
+  render();
+  persist(true);
+  bootstrap.Collapse.getInstance(byId('mainNav'))?.hide();
+  app.querySelector('h1')?.focus({ preventScroll: true });
+  window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+}
+function openEvidence(id) {
+  const html = evidenceDocument(state, id);
+  if (!html) { toast('Материал закрыт', 'Сначала получите его при осмотре или допросе.'); return; }
+  showModal('Материалы дела', html);
+}
+function openPerson(id, extra = false) {
+  const person = characterById.get(id);
+  if (!person) return;
+  const html = personDocument(state, id, extra);
+  if (html) showModal(`${extra ? 'Повторный допрос' : 'Досье'}: ${person.name}`, html);
+}
+function openPortrait(id) {
+  const person = id === 'arkadiy' ? victim : characterById.get(id);
+  if (!person) return;
+  showModal(person.name, `<figure class="full-portrait"><img src="${escapeHTML(person.image)}" alt="${escapeHTML(person.name)}" width="600" height="800"><figcaption>${escapeHTML(person.role)} · иллюстрированный портрет</figcaption></figure><button type="button" class="btn btn-outline-brass" ${id === 'arkadiy' ? 'data-evidence="report"' : `data-person="${id}"`}>${id === 'arkadiy' ? 'К отчёту' : 'К досье'}</button>`);
+}
+function confirmReset() {
+  showModal('Начать новое дело?', '<p>Будут удалены прогресс и ваши записи в этом браузере. При необходимости сначала скачайте журнал.</p><div class="d-flex flex-wrap gap-2"><button type="button" class="btn btn-outline-brass" data-action="export-journal">Скачать записи</button><button type="button" class="btn btn-brass" data-action="reset-confirm">Начать заново</button></div>');
+}
+function captureDrafts() {
+  document.querySelectorAll('textarea[data-note]').forEach(field => { state.notes[field.dataset.note] = field.value.slice(0, 4000); });
+  document.querySelectorAll('input[data-answer]:checked').forEach(field => { state.answers[field.dataset.answer] = field.value; });
+  const select = byId('verdictSelect');
+  if (select) state.accusation = select.value;
+  if (document.querySelector('[data-verdict-evidence]')) state.selectedEvidence = [...document.querySelectorAll('[data-verdict-evidence]:checked')].map(field => field.value);
+}
+function downloadJournal() {
+  captureDrafts();
+  const url = URL.createObjectURL(new Blob(['\uFEFF', journalText(state)], { type: 'text/plain;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'grace-hotel-journal.txt';
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function action(name) {
+  if (name === 'export-journal') return downloadJournal();
+  if (name === 'reset-prompt') return confirmReset();
+  if (name === 'reset-confirm') {
+    clearTimeout(saveTimer);
+    clearState();
+    state = createState();
+    go('home');
+    return toast('Новое дело', 'Расследование начинается с первичного осмотра.');
+  }
+  if (name === 'resume') { resumeCase(state); return go('stage', 4); }
+  if (name === 'defer-prompt') return showModal('Завершить без обвинения?', '<p>Откроется альтернативный эпилог с развязкой дела. После него можно вернуться к доказательствам.</p><button type="button" class="btn btn-brass" data-action="defer-confirm">Открыть эпилог</button>');
+  if (name === 'defer-confirm') { if (deferCase(state)) go('stage', 4); }
+}
 
-document.addEventListener('click',event=>{const target=event.target.closest('button,a');if(!target)return;if(target.dataset.view){event.preventDefault();go(target.dataset.view);return;}if(target.hasAttribute('data-open-report')){openEvidence('report');return;}if(target.dataset.stageLink){const n=Number(target.dataset.stageLink);if(n<=state.stage)go('stage');return;}if(target.dataset.evidence){openEvidence(target.dataset.evidence);return;}if(target.dataset.person){openPerson(target.dataset.person,state);saveState(state);return;}if(target.dataset.room){openRoom(target.dataset.room);return;}if(target.dataset.submitStage){submitStage(Number(target.dataset.submitStage));return;}if(target.dataset.saveNote){const area=byId('personNote');state.notes[target.dataset.saveNote]=area?.value.trim()||'';saveState(state);toast('Заметка сохранена','Запись добавлена в ваши заметки по делу.');return;}});
-byId('resetGameBtn').addEventListener('click',()=>{if(!confirm('Удалить сохранённый прогресс и начать расследование заново?'))return;clearState();state=loadState();currentView='home';render();toast('Дело сброшено','Начато новое расследование.');});
+document.addEventListener('click', event => {
+  const target = event.target.closest('button, a');
+  if (!target || target.disabled) return;
+  if (target.dataset.view) { event.preventDefault(); captureDrafts(); return go(target.dataset.view); }
+  if (target.dataset.stage) { captureDrafts(); return go('stage', Number(target.dataset.stage)); }
+  if (target.dataset.evidence) return openEvidence(target.dataset.evidence);
+  if (target.dataset.person) return openPerson(target.dataset.person);
+  if (target.dataset.personExtra) return openPerson(target.dataset.personExtra, true);
+  if (target.dataset.portrait) return openPortrait(target.dataset.portrait);
+  if (target.dataset.room) {
+    const room = locationById.get(target.dataset.room);
+    if (room && visitRoom(state, room.id)) { render(); persist(true); showModal(room.name, roomDocument(state, room)); }
+    return;
+  }
+  if (target.dataset.readEvidence && readEvidence(state, target.dataset.readEvidence)) {
+    target.disabled = true; target.textContent = '✓ Материал изучен'; render(); persist(true); return;
+  }
+  if (target.dataset.readExtra && readAdditional(state, target.dataset.readExtra)) {
+    target.disabled = true; target.textContent = '✓ Протокол изучен'; render(); persist(true); return;
+  }
+  if (target.dataset.roomPhoto) {
+    const room = locationById.get(target.dataset.roomPhoto);
+    const photo = room?.stage <= state.stage ? room.photos[Number(target.dataset.photoIndex)] : null;
+    if (photo) showModal(room.name, `<figure class="full-portrait"><img src="${escapeHTML(photo.src)}" alt="${escapeHTML(photo.alt)}"><figcaption>${escapeHTML(photo.caption)}</figcaption></figure><button type="button" class="btn btn-outline-brass" data-room="${room.id}">К осмотру</button>`);
+    return;
+  }
+  if (target.dataset.action) action(target.dataset.action);
+});
+
+document.addEventListener('input', event => {
+  const field = event.target;
+  if (field.matches('textarea[data-note]')) { state.notes[field.dataset.note] = field.value.slice(0, 4000); persist(); }
+});
+document.addEventListener('change', event => {
+  const field = event.target;
+  if (field.matches('[data-answer], [data-accusation], [data-verdict-evidence]')) { captureDrafts(); persist(); }
+});
+document.addEventListener('submit', event => {
+  const form = event.target;
+  if (!form.matches('[data-stage-form], [data-assessment-form], [data-verdict-form]')) return;
+  event.preventDefault();
+  captureDrafts();
+  if (form.dataset.stageForm) {
+    const stage = Number(form.dataset.stageForm);
+    const passed = completeStage(state, stage);
+    persist(true); render();
+    if (passed) toast('Этап завершён', `Доступен следующий этап: ${state.stage}.`);
+    return;
+  }
+  if (form.dataset.assessmentForm) {
+    const data = new FormData(form);
+    const result = assessPerson(state, form.dataset.assessmentForm, data.get('assessment'), data.get('note'));
+    const feedback = byId('personFeedback');
+    feedback.className = `answer-feedback ${result.success ? 'correct' : 'incorrect'}`;
+    feedback.textContent = result.message;
+    if (result.success) { persist(true); render(); }
+    return;
+  }
+  const result = accuse(state, state.accusation, state.selectedEvidence, state.notes.verdict);
+  if (result.success) go('stage', 4);
+  else { const feedback = byId('verdictFeedback'); feedback.className = 'answer-feedback incorrect'; feedback.textContent = result.message; persist(true); }
+});
+window.addEventListener('popstate', () => {
+  const view = location.hash.slice(1);
+  go(validViews.has(view) ? view : 'home', null, false);
+});
+window.addEventListener('pagehide', () => { clearTimeout(saveTimer); saveState(state); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { clearTimeout(saveTimer); saveState(state); } });
+byId('resetGameBtn').addEventListener('click', confirmReset);
+byId('rulesBtn').addEventListener('click', () => showModal('Как вести расследование', '<p>В каждом этапе есть список подготовки. Осматривайте помещения, открывайте материалы и отмечайте их как изученные.</p><p>В первом этапе перечислите шесть находок из кабинета. Разделяйте их точкой с запятой или новой строкой. Правильно распознанные названия подсвечиваются зелёным, неизвестные — красным.</p><p>После каждого первого допроса выберите оценку и объясните её. Это ваша версия: система не объявляет персонажа виновным за вас.</p><p>В третьем этапе откроются конверты и дополнительные допросы. В четвёртом — обвинение с выбором доказательств.</p><p>Заметки и прогресс сохраняются в текущем браузере. Журнал можно скачать. Все события и экспертные документы относятся к вымышленному сюжету.</p>'));
+
+const hashView = location.hash.slice(1);
+if (validViews.has(hashView)) state.view = hashView;
+if (typeof bootstrap === 'undefined') throw new Error('Локальные файлы Bootstrap не загрузились.');
 render();
+document.documentElement.dataset.gameReady = 'true';
+persist(true);
+if (loaded.status === 'unavailable') toast('Сохранение не прочитано', 'Начато новое дело. Если сохранение недоступно, игра продолжит работать до закрытия вкладки.');
+if (loaded.status === 'migrated') toast('Прогресс перенесён', 'Заметки и открытые этапы сохранены. Новые материалы доступны в архиве.');
