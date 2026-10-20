@@ -1,6 +1,7 @@
 import { evidence, evidenceById } from '../data/evidence.js';
 import { characters, characterById } from '../data/characters.js';
 import { locationById } from '../data/locations.js';
+import { targetByKey, targetKey, sceneByKey, sceneKey } from '../data/scenes.js';
 import { interrogationById, additionalById, additionalInterrogations } from '../data/dialogues.js';
 import { meaningfulText, validateInventory, validateQuestions } from './validation.js';
 
@@ -18,10 +19,41 @@ export function visitRoom(state, id) {
   if (!room || room.stage > state.stage || (state.finished && !state.visitedRooms.includes(id))) return false;
   if (!state.visitedRooms.includes(id)) {
     addUnique(state.visitedRooms, id);
-    room.evidence.forEach(item => addUnique(state.foundEvidence, item));
     record(state, `Осмотрено помещение: ${room.name}.`);
   }
   return true;
+}
+export function discoverTarget(state, roomId, sceneId, id) {
+  const room = locationById.get(roomId);
+  const key = targetKey(roomId, sceneId, id);
+  const target = targetByKey.get(key);
+  if (!room || !target || room.stage > state.stage || !state.visitedRooms.includes(roomId)) return { success: false };
+  const alreadyFound = state.foundTargets.includes(key);
+  if (state.finished && !alreadyFound) return { success: false };
+  if (!alreadyFound) {
+    addUnique(state.foundTargets, key);
+    if (target.evidence) {
+      addUnique(state.foundEvidence, target.evidence);
+      record(state, `Найдена улика: ${evidenceById.get(target.evidence).title}. Место: ${room.name}.`);
+    } else record(state, `Осмотрена деталь: ${target.label}. Место: ${room.name}.`);
+  }
+  return { success: true, alreadyFound, target, key };
+}
+export function sceneProgress(state, roomId, sceneId = null) {
+  const room = locationById.get(roomId);
+  const targets = room ? room.scenes.flatMap(scene => !sceneId || scene.id === sceneId ? scene.targets.filter(target => target.evidence).map(target => targetKey(roomId, scene.id, target.id)) : []) : [];
+  return { found: targets.filter(key => state.foundTargets.includes(key)).length, total: targets.length };
+}
+export function getHintTarget(state, roomId, sceneId) {
+  const room = locationById.get(roomId);
+  const scene = sceneByKey.get(sceneKey(roomId, sceneId));
+  if (!room || !scene || room.stage > state.stage || state.finished || !state.visitedRooms.includes(roomId)) return null;
+  const target = scene.targets.find(item => item.evidence && !state.foundTargets.includes(targetKey(roomId, sceneId, item.id)))
+    ?? scene.targets.find(item => !state.foundTargets.includes(targetKey(roomId, sceneId, item.id)));
+  if (!target) return null;
+  state.hintsUsed += 1;
+  record(state, `Использована подсказка: ${room.name}, ${scene.title}.`);
+  return target;
 }
 export function readEvidence(state, id) {
   if (!canOpenEvidence(state, id)) return false;
@@ -60,6 +92,8 @@ export function requirements(state, stage) {
   const require = (complete, label, view) => result.push({ complete, label, view });
   if (stage === 1) {
     require(state.visitedRooms.includes('office') && state.visitedRooms.includes('lounge'), 'Осмотреть кабинет и гостиную', 'rooms');
+    const found = sceneProgress(state, 'office');
+    require(found.found === found.total, `Найти предметы в кабинете и следы у окна (${found.found}/${found.total})`, 'rooms');
     const initial = evidence.filter(item => item.stage === 1);
     require(initial.every(item => state.readEvidence.includes(item.id)), `Изучить первичные материалы (${initial.filter(item => state.readEvidence.includes(item.id)).length}/${initial.length})`, 'evidence');
   }

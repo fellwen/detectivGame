@@ -15,4 +15,25 @@ export const evidence = [
   { id: 'gift', number: '14', title: 'Передача бутылки', type: 'Дополнительные показания', stage: 3, source: 'extra-dunya', summary: 'Дуня видела передачу коньяка перед ужином.', paragraphs: ['По уточняющему вопросу Дуня сообщила: около 20:40 Виктор принёс Аркадию бутылку коньяка. Она видела передачу, когда относила поднос.', 'Свидетельство связывает Виктора с напитком до закрытия кабинета. Внесения яда Дуня не видела.'] },
   { id: 'confession', number: '15', title: 'Записка Виктора', type: 'Заключительный документ', stage: 4, source: 'ending', summary: 'Признание из эпилога.', paragraphs: ['«Я, Виктор Дронов, признаю, что отравил коньяк Аркадия Вельского. Я знал его привычку пить вечером и передал бутылку заранее. Затем вернулся к себе, а после — в гостиную.', 'Аркадий хотел раскрыть подделку старого дела. Я солгал о времени, проведённом с гостями. Документы оставляю следствию».', 'Записка найдена в эпилоге и не заменяет доказательства, собранные до решения игрока.'] }
 ];
+const exhibit = (name, caption, extra = {}) => ({ src: `assets/images/evidence/${name}-illustrated.webp`, caption, ...extra });
+const artwork = {
+  decanter: [exhibit('bottle', 'Бутылка коньяка. Иллюстрация предмета.'), exhibit('glass', 'Бокал с остатками напитка. Иллюстрация предмета.')],
+  lock: [exhibit('wire', 'Проволока, найденная при осмотре двери.')],
+  button: [exhibit('button', 'Пуговица от пальто. Иллюстрация предмета.')],
+  note: [exhibit('note', 'Записка с угрозой. Текст воспроизведён по предоставленному материалу.', { letter: true })],
+  handkerchief: [exhibit('handkerchief', 'Платок у кресла. Иллюстрация предмета.')],
+  glove: [exhibit('glove', 'Кожаная перчатка. Иллюстрация предмета.')],
+  footprints: [{ src: 'assets/images/rooms/footprints-illustrated.webp', caption: 'Следы у закрытого окна. Иллюстрированная реконструкция.' }],
+  autopsy: [{ src: 'assets/images/evidence/injuries-map.jpg', caption: 'Предоставленная схема повреждений: отметки на лице и левой кисти сохранены.' }]
+};
+for (const item of evidence) if (artwork[item.id]) item.exhibits = artwork[item.id];
+const note = evidence.find(item => item.id === 'note');
+note.summary = 'Угроза убийством и обращением в полицию. Внизу — «Г.».';
+note.letterLines = ['я либо тебя убью', 'либо заявлю на тебя в полицию', 'Г.'];
+note.paragraphs = ['Текст записки: «Я либо тебя убью, либо заявлю на тебя в полицию». Внизу стоит «Г.», даты нет.', 'Записку связывают с Олегом Грачёвым по содержанию конфликта и сходству почерка. Одна буква и внешнее сходство не устанавливают авторство.'];
+const lock = evidence.find(item => item.id === 'lock');
+lock.title = 'Замок, ключ и проволока';
+lock.paragraphs = ['Ключ остался с внутренней стороны двери. На замке обнаружены тонкие царапины. У двери найдена проволока.', 'Дронов сообщил, что использовал проволоку, чтобы открыть дверь после 22:30. Следы могут объясняться этим вскрытием и не доказывают запирание снаружи.'];
+evidence.find(item => item.id === 'forged').sceneCrop = { roomId: 'kotroom', sceneId: 'study', targetId: 'folder' };
+evidence.find(item => item.id === 'dues').sceneCrop = { roomId: 'bedroom', sceneId: 'bed', targetId: 'receipt' };
 export const evidenceById = new Map(evidence.map(item => [item.id, item]));

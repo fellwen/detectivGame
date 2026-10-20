@@ -8,7 +8,7 @@ export function meaningfulText(value, minimumWords = 3) {
 
 const inventory = [
   { id: 'decanter', label: 'Коньяк и бокал', stems: ['конья', 'бутыл', 'бокал', 'напит', 'цианид'] },
-  { id: 'lock', label: 'Замок и ключ', stems: ['замок', 'замк', 'ключ', 'двер'] },
+  { id: 'lock', label: 'Замок и проволока', stems: ['замок', 'замк', 'ключ', 'двер', 'проволок'] },
   { id: 'button', label: 'Пуговица', stems: ['пуговиц'] },
   { id: 'note', label: 'Записка с угрозой', stems: ['записк', 'угроз'] },
   { id: 'handkerchief', label: 'Платок', stems: ['платок', 'платк'] },

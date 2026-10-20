@@ -1,16 +1,20 @@
 import { victim, characterById } from './data/characters.js';
 import { locationById } from './data/locations.js';
+import { sceneByKey, sceneKey } from './data/scenes.js';
 import { loadState, saveState, clearState, createState } from './modules/save-manager.js';
-import { visitRoom, readEvidence, canOpenInterrogation, assessPerson, readAdditional, completeStage, accuse, deferCase, resumeCase } from './modules/case.js';
+import { visitRoom, readEvidence, assessPerson, readAdditional, completeStage, accuse, deferCase, resumeCase, discoverTarget, getHintTarget } from './modules/case.js';
 import { renderEvidencePage, evidenceDocument, renderRooms, roomDocument } from './modules/investigation.js';
 import { renderPeople, personDocument } from './modules/interrogation.js';
 import { renderStage } from './modules/quiz.js';
 import { renderHome, renderJournal, renderEnding, journalText } from './modules/views.js';
 import { byId, escapeHTML, showModal, hideModal, toast } from './modules/dom.js';
+import { normalizeZoom, normalizePan, pickSceneTarget, returnSceneAttributes, fittedSceneWidth } from './modules/search-scene.js';
+import { enlargedExhibit } from './modules/exhibits.js';
 
 const loaded = loadState();
 let state = loaded.state;
 let saveTimer;
+let evidenceContext = null;
 const app = byId('app');
 const validViews = new Set(['home', 'stage', 'rooms', 'people', 'evidence', 'journal']);
 
@@ -51,10 +55,80 @@ function go(view, stage = null, push = true) {
   app.querySelector('h1')?.focus({ preventScroll: true });
   window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
 }
-function openEvidence(id) {
+function openEvidence(id, context = null) {
   const html = evidenceDocument(state, id);
   if (!html) { toast('Материал закрыт', 'Сначала получите его при осмотре или допросе.'); return; }
-  showModal('Материалы дела', html);
+  evidenceContext = context ? { ...context, id } : null;
+  const back = context ? `<button type="button" class="btn btn-outline-brass mt-3" data-room="${escapeHTML(context.roomId)}" data-scene-id="${escapeHTML(context.sceneId)}" ${returnSceneAttributes(context)}>Вернуться к поиску →</button>` : '';
+  showModal('Материалы дела', html + back);
+}
+function searchContext() {
+  const root = document.querySelector('.room-search');
+  if (!root) return null;
+  const viewport = root.querySelector('.scene-viewport');
+  return {
+    roomId: root.dataset.searchRoom, sceneId: root.dataset.searchScene,
+    zoom: normalizeZoom(root.querySelector('.search-stage')?.dataset.sceneZoom),
+    panX: normalizePan(viewport.scrollLeft / Math.max(1, viewport.scrollWidth - viewport.clientWidth)),
+    panY: normalizePan(viewport.scrollTop / Math.max(1, viewport.scrollHeight - viewport.clientHeight))
+  };
+}
+function openRoom(id, sceneId = '', zoom = 1, position = null) {
+  const room = locationById.get(id);
+  if (!room || !visitRoom(state, id)) return;
+  const html = roomDocument(state, room, sceneId);
+  if (!html) return;
+  render(); persist(true);
+  showModal(room.name, html, { wide: true });
+  setSceneZoom(zoom);
+  if (position) {
+    const viewport = document.querySelector('.room-search .scene-viewport');
+    viewport.scrollLeft = normalizePan(position.panX) * Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+    viewport.scrollTop = normalizePan(position.panY) * Math.max(0, viewport.scrollHeight - viewport.clientHeight);
+  }
+}
+function setSceneZoom(value) {
+  const root = document.querySelector('.room-search');
+  if (!root) return;
+  const viewport = root.querySelector('.scene-viewport'), stage = root.querySelector('.search-stage');
+  const previous = stage.getBoundingClientRect();
+  const centerX = (viewport.scrollLeft + viewport.clientWidth / 2 - stage.offsetLeft) / Math.max(previous.width, 1);
+  const centerY = (viewport.scrollTop + viewport.clientHeight / 2) / Math.max(previous.height, 1);
+  const zoom = normalizeZoom(value);
+  const scene = sceneByKey.get(sceneKey(root.dataset.searchRoom, root.dataset.searchScene));
+  const availableHeight = Math.min(760, window.innerHeight * (matchMedia('(max-width: 575px)').matches ? .55 : .64)) - 2;
+  stage.style.width = `${fittedSceneWidth(viewport.clientWidth, Math.max(1, availableHeight), scene.width, scene.height, zoom)}px`;
+  stage.dataset.sceneZoom = String(zoom);
+  root.querySelector('#sceneZoomValue').textContent = `${Math.round(zoom * 100)}%`;
+  root.querySelector('[data-zoom-step="-0.5"]').disabled = zoom <= 1;
+  root.querySelector('[data-zoom-step="0.5"]').disabled = zoom >= 3;
+  const next = stage.getBoundingClientRect();
+  viewport.scrollLeft = Math.max(0, centerX * next.width + stage.offsetLeft - viewport.clientWidth / 2);
+  viewport.scrollTop = Math.max(0, centerY * next.height - viewport.clientHeight / 2);
+}
+function findSceneTarget(id) {
+  const context = searchContext();
+  if (!context) return;
+  const result = discoverTarget(state, context.roomId, context.sceneId, id);
+  if (!result.success) return;
+  persist(true); render();
+  if (result.target.evidence) return openEvidence(result.target.evidence, context);
+  const target = result.target;
+  showModal(target.label, `${target.image ? `<figure class="large-exhibit"><img src="${escapeHTML(target.image)}" alt="${escapeHTML(target.label)}"></figure>` : ''}<p>${escapeHTML(target.description)}</p><button type="button" class="btn btn-outline-brass" data-room="${context.roomId}" data-scene-id="${context.sceneId}" ${returnSceneAttributes(context)}>Вернуться к поиску →</button>`);
+}
+function showSearchHint() {
+  const context = searchContext();
+  if (!context) return;
+  const hint = getHintTarget(state, context.roomId, context.sceneId);
+  const feedback = byId('sceneFeedback');
+  if (!hint) { feedback.textContent = 'На этом виде все доступные участки уже осмотрены. Проверьте другие ракурсы.'; return; }
+  const root = document.querySelector('.room-search');
+  root.querySelectorAll('.is-hint').forEach(button => button.classList.remove('is-hint'));
+  const button = [...root.querySelectorAll('[data-search-target]')].find(item => item.dataset.searchTarget === hint.id);
+  button.classList.add('is-hint');
+  button.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center', inline: 'center' });
+  feedback.textContent = 'Подсвечен один участок. Нажмите на него, чтобы рассмотреть предмет.';
+  persist(true);
 }
 function openPerson(id, extra = false) {
   const person = characterById.get(id);
@@ -104,30 +178,55 @@ function action(name) {
 }
 
 document.addEventListener('click', event => {
+  const imageStage = event.target.closest('.search-stage');
+  if (imageStage && event.detail > 0) {
+    const context = searchContext(), rect = imageStage.getBoundingClientRect();
+    const scene = context ? sceneByKey.get(sceneKey(context.roomId, context.sceneId)) : null;
+    const found = scene ? pickSceneTarget(scene, (event.clientX - rect.left) / rect.width * 100, (event.clientY - rect.top) / rect.height * 100, rect.width, rect.height) : null;
+    if (found) findSceneTarget(found.id);
+    else byId('sceneFeedback').textContent = 'Этот участок осмотрен. Продолжайте поиск или воспользуйтесь увеличением.';
+    return;
+  }
   const target = event.target.closest('button, a');
-  if (!target || target.disabled) return;
+  if (!target) {
+    if (event.target.closest('.search-stage')) byId('sceneFeedback').textContent = 'Этот участок осмотрен. Продолжайте поиск или воспользуйтесь увеличением.';
+    return;
+  }
+  if (target.disabled) return;
+  if (target.dataset.searchTarget) return findSceneTarget(target.dataset.searchTarget);
+  if (target.hasAttribute('data-search-hint')) return showSearchHint();
+  if (target.dataset.zoomStep) {
+    const context = searchContext();
+    if (context) setSceneZoom(context.zoom + Number(target.dataset.zoomStep));
+    return;
+  }
   if (target.dataset.view) { event.preventDefault(); captureDrafts(); return go(target.dataset.view); }
   if (target.dataset.stage) { captureDrafts(); return go('stage', Number(target.dataset.stage)); }
-  if (target.dataset.evidence) return openEvidence(target.dataset.evidence);
+  if (target.dataset.evidence) {
+    const current = searchContext();
+    return openEvidence(target.dataset.evidence, target.dataset.returnRoom ? {
+      roomId: target.dataset.returnRoom, sceneId: target.dataset.returnScene,
+      zoom: normalizeZoom(target.dataset.returnZoom ?? current?.zoom),
+      panX: normalizePan(target.dataset.returnPanX ?? current?.panX),
+      panY: normalizePan(target.dataset.returnPanY ?? current?.panY)
+    } : null);
+  }
+  if (target.dataset.exhibit) {
+    const html = enlargedExhibit(state, target.dataset.exhibit, Number(target.dataset.exhibitIndex), evidenceContext?.id === target.dataset.exhibit ? evidenceContext : null);
+    if (html) showModal('Крупный план предмета', html);
+    return;
+  }
   if (target.dataset.person) return openPerson(target.dataset.person);
   if (target.dataset.personExtra) return openPerson(target.dataset.personExtra, true);
   if (target.dataset.portrait) return openPortrait(target.dataset.portrait);
   if (target.dataset.room) {
-    const room = locationById.get(target.dataset.room);
-    if (room && visitRoom(state, room.id)) { render(); persist(true); showModal(room.name, roomDocument(state, room)); }
-    return;
+    return openRoom(target.dataset.room, target.dataset.sceneId ?? target.dataset.returnScene, normalizeZoom(target.dataset.returnZoom), target.hasAttribute('data-return-pan-x') ? { panX: target.dataset.returnPanX, panY: target.dataset.returnPanY } : null);
   }
   if (target.dataset.readEvidence && readEvidence(state, target.dataset.readEvidence)) {
     target.disabled = true; target.textContent = '✓ Материал изучен'; render(); persist(true); return;
   }
   if (target.dataset.readExtra && readAdditional(state, target.dataset.readExtra)) {
     target.disabled = true; target.textContent = '✓ Протокол изучен'; render(); persist(true); return;
-  }
-  if (target.dataset.roomPhoto) {
-    const room = locationById.get(target.dataset.roomPhoto);
-    const photo = room?.stage <= state.stage ? room.photos[Number(target.dataset.photoIndex)] : null;
-    if (photo) showModal(room.name, `<figure class="full-portrait"><img src="${escapeHTML(photo.src)}" alt="${escapeHTML(photo.alt)}"><figcaption>${escapeHTML(photo.caption)}</figcaption></figure><button type="button" class="btn btn-outline-brass" data-room="${room.id}">К осмотру</button>`);
-    return;
   }
   if (target.dataset.action) action(target.dataset.action);
 });
@@ -170,9 +269,13 @@ window.addEventListener('popstate', () => {
   go(validViews.has(view) ? view : 'home', null, false);
 });
 window.addEventListener('pagehide', () => { clearTimeout(saveTimer); saveState(state); });
+window.addEventListener('resize', () => {
+  const context = searchContext();
+  if (context) setSceneZoom(context.zoom);
+});
 document.addEventListener('visibilitychange', () => { if (document.hidden) { clearTimeout(saveTimer); saveState(state); } });
 byId('resetGameBtn').addEventListener('click', confirmReset);
-byId('rulesBtn').addEventListener('click', () => showModal('Как вести расследование', '<p>В каждом этапе есть список подготовки. Осматривайте помещения, открывайте материалы и отмечайте их как изученные.</p><p>В первом этапе перечислите шесть находок из кабинета. Разделяйте их точкой с запятой или новой строкой. Правильно распознанные названия подсвечиваются зелёным, неизвестные — красным.</p><p>После каждого первого допроса выберите оценку и объясните её. Это ваша версия: система не объявляет персонажа виновным за вас.</p><p>В третьем этапе откроются конверты и дополнительные допросы. В четвёртом — обвинение с выбором доказательств.</p><p>Заметки и прогресс сохраняются в текущем браузере. Журнал можно скачать. Все события и экспертные документы относятся к вымышленному сюжету.</p>'));
+byId('rulesBtn').addEventListener('click', () => showModal('Как вести расследование', '<p>В каждом этапе есть список подготовки. Откройте помещение и нажимайте на предметы на изображении. Некоторые детали относятся к обстановке, другие откроют материал дела.</p><p>Используйте кнопки + и −, прокрутку увеличенной сцены и подсказку. У кабинета есть отдельный вид снаружи у окна, у комнаты сыщика — два ракурса. Найденные предметы отмечаются рамкой.</p><p>После находки изучите документ и отметьте его как прочитанный. В первом этапе перечислите шесть находок с места преступления. Разделяйте их точкой с запятой или новой строкой. Верные названия отмечаются зелёным, неизвестные — красным.</p><p>После каждого первого допроса выберите оценку и объясните её. Это ваша версия: система не объявляет персонажа виновным за вас.</p><p>В третьем этапе откроются конверты и дополнительные допросы. В четвёртом — обвинение с выбором доказательств.</p><p>Заметки, найденные предметы и прогресс сохраняются в текущем браузере. Журнал можно скачать. Все события и экспертные документы относятся к вымышленному сюжету.</p>'));
 
 const hashView = location.hash.slice(1);
 if (validViews.has(hashView)) state.view = hashView;

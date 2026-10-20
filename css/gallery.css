@@ -1,0 +1,23 @@
+:root { --line: #c19c6360; --paper: #ead8b7; --muted: #b0bbc2; }
+* { box-sizing: border-box; }
+body { background: #0b1117; color: var(--paper); font-family: Georgia, serif; margin: 0; padding: clamp(18px, 4vw, 50px); }
+header, main, footer { max-width: 1440px; margin-inline: auto; }
+header { margin-bottom: 48px; }
+h1 { font-size: clamp(28px, 4vw, 48px); margin: 0 0 16px; font-weight: 400; }
+h2 { font-size: clamp(23px, 3vw, 32px); font-weight: 400; margin: 0 0 22px; }
+p { color: var(--muted); line-height: 1.7; }
+.kicker { letter-spacing: .12em; text-transform: uppercase; font: 12px/1.7 Arial, sans-serif; color: #c19c63; }
+a { color: #d3ae70; text-underline-offset: .2em; }
+a:focus-visible { outline: 2px solid var(--paper); outline-offset: 5px; }
+section { margin-bottom: 54px; }
+.gallery { display: grid; gap: 20px; }
+.rooms-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.items-gallery, .people-gallery { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+figure { min-width: 0; margin: 0; border: 1px solid var(--line); background: #18232d; }
+img { display: block; width: 100%; height: auto; }
+figcaption { padding: 16px; font: 15px/1.6 Arial, sans-serif; }
+.medical-figure { max-width: 360px; }
+footer { padding-bottom: 30px; }
+@media (max-width: 900px) { .items-gallery, .people-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .rooms-gallery { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 440px) { .items-gallery, .people-gallery { grid-template-columns: minmax(0, 1fr); } }

@@ -2,6 +2,7 @@ import { evidenceById } from '../data/evidence.js';
 import { characterById } from '../data/characters.js';
 import { locationById } from '../data/locations.js';
 import { additionalById } from '../data/dialogues.js';
+import { targetByKey } from '../data/scenes.js';
 
 export const SAVE_KEY = 'grace-hotel-case-v2';
 const LEGACY_KEY = 'grace-hotel-case-v1';
@@ -21,8 +22,9 @@ const dictionary = value => {
 
 export function createState() {
   return {
-    version: 2, stage: 1, view: 'home', viewStage: 1, completedStages: [],
+    version: 3, stage: 1, view: 'home', viewStage: 1, completedStages: [],
     foundEvidence: ['report', 'autopsy'], readEvidence: [], visitedRooms: [],
+    foundTargets: [], hintsUsed: 0,
     readInterrogations: [], readAdditional: [], assessments: {}, notes: {}, answers: {},
     checkedStages: [], accusation: '', selectedEvidence: [], finished: false, ending: null,
     accusations: [], journal: [], savedAt: null
@@ -44,6 +46,13 @@ export function sanitizeState(data) {
   state.foundEvidence = [...new Set(['report', 'autopsy', ...ids(data.foundEvidence, evidenceById).filter(id => evidenceById.get(id).stage <= state.stage && id !== 'confession')])];
   state.readEvidence = ids(data.readEvidence, evidenceById).filter(id => state.foundEvidence.includes(id));
   state.visitedRooms = ids(data.visitedRooms, locationById).filter(id => locationById.get(id).stage <= state.stage);
+  state.foundTargets = ids(data.foundTargets, targetByKey).filter(key => {
+    const target = targetByKey.get(key);
+    return locationById.get(target.roomId).stage <= state.stage && (!target.evidence || state.foundEvidence.includes(target.evidence));
+  });
+  // Находки старых версий остаются известными; обновление не сбрасывает расследование.
+  for (const [key, target] of targetByKey) if (target.evidence && state.foundEvidence.includes(target.evidence) && !state.foundTargets.includes(key)) state.foundTargets.push(key);
+  state.hintsUsed = Number.isInteger(data.hintsUsed) && data.hintsUsed >= 0 ? Math.min(data.hintsUsed, 1000) : 0;
   if (state.stage >= 2) state.readInterrogations = ids(data.readInterrogations, characterById);
   if (state.stage >= 3) state.readAdditional = ids(data.readAdditional, additionalById);
   state.notes = dictionary(data.notes);

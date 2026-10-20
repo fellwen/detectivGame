@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createState, sanitizeState, loadState, saveState, migrateLegacy, SAVE_KEY } from '../js/modules/save-manager.js';
-import { visitRoom, readEvidence, canOpenEvidence, canOpenInterrogation, assessPerson, readAdditional, completeStage, evaluateStage, accuse, deferCase, resumeCase, investigationProgress } from '../js/modules/case.js';
+import { visitRoom, readEvidence, canOpenEvidence, canOpenInterrogation, assessPerson, readAdditional, completeStage, evaluateStage, accuse, deferCase, resumeCase, investigationProgress, discoverTarget } from '../js/modules/case.js';
 import { validateInventory } from '../js/modules/validation.js';
 import { characters } from '../js/data/characters.js';
 import { questions } from '../js/data/stages.js';
@@ -10,12 +10,18 @@ import { renderPeople, personDocument } from '../js/modules/interrogation.js';
 import { renderStage } from '../js/modules/quiz.js';
 import { renderJournal } from '../js/modules/views.js';
 import { evidenceDocument } from '../js/modules/investigation.js';
+import { locations } from '../js/data/locations.js';
 
 const inventory = 'коньяк с ядом; замок и ключ; пуговица; записка с угрозой; платок; следы обуви';
 const reason = 'Сопоставляю независимые сведения из протоколов';
 function answerQuestions(state, stage) { for (const question of questions[stage]) state.answers[`${stage}:${question.id}`] = question.correct; }
+function searchRoom(state, id) {
+  visitRoom(state, id);
+  const room = locations.find(item => item.id === id);
+  for (const scene of room.scenes) for (const target of scene.targets) if (target.evidence) assert.equal(discoverTarget(state, id, scene.id, target.id).success, true);
+}
 function passFirstStage(state) {
-  visitRoom(state, 'office'); visitRoom(state, 'lounge');
+  searchRoom(state, 'office'); visitRoom(state, 'lounge');
   state.foundEvidence.forEach(id => readEvidence(state, id));
   state.notes.inventory = inventory; answerQuestions(state, 1);
   assert.equal(completeStage(state, 1), true);
@@ -27,7 +33,7 @@ function passSecondStage(state) {
   assert.equal(completeStage(state, 2), true);
 }
 function passThirdStage(state) {
-  visitRoom(state, 'kotroom'); visitRoom(state, 'bedroom');
+  searchRoom(state, 'kotroom'); searchRoom(state, 'bedroom');
   ['forged', 'glove', 'dues'].forEach(id => readEvidence(state, id));
   ['kot', 'dunya', 'plyushkin'].forEach(id => assert.equal(readAdditional(state, id), true));
   readEvidence(state, 'gift'); state.notes.stage3 = reason; answerQuestions(state, 3);
@@ -49,6 +55,7 @@ test('нельзя пройти осмотр только правильными
   assert.equal(completeStage(state, 1), false); assert.equal(state.stage, 1);
   visitRoom(state, 'office'); visitRoom(state, 'lounge');
   assert.equal(completeStage(state, 1), false);
+  searchRoom(state, 'office');
   state.foundEvidence.forEach(id => readEvidence(state, id));
   assert.equal(completeStage(state, 1), true);
   assert.equal(completeStage(state, 1), false); assert.equal(state.stage, 2);
@@ -74,6 +81,7 @@ test('повторные допросы требуют изученных кон
   const state = createState(); passFirstStage(state); passSecondStage(state);
   assert.equal(readAdditional(state, 'dunya'), false);
   visitRoom(state, 'kotroom'); assert.equal(readAdditional(state, 'dunya'), false);
+  discoverTarget(state, 'kotroom', 'drawer', 'glove');
   readEvidence(state, 'glove'); assert.equal(readAdditional(state, 'dunya'), true);
   assert.equal(state.foundEvidence.includes('gift'), true);
   readAdditional(state, 'dunya'); assert.equal(state.readAdditional.length, 1);

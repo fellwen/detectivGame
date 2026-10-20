@@ -1,7 +1,8 @@
 export const byId = id => document.getElementById(id);
 export const escapeHTML = (value = '') => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 
-export function showModal(title, html) {
+export function showModal(title, html, options = {}) {
+  byId('detailModal').querySelector('.modal-dialog').classList.toggle('modal-xl', Boolean(options.wide));
   byId('detailModalTitle').textContent = title;
   byId('detailModalBody').innerHTML = html;
   byId('detailModalBody').scrollTop = 0;

@@ -13,7 +13,7 @@ function renderQuestions(state, stage, checked) {
   }).join('');
 }
 function renderInventory(state, result, checked) {
-  return `<label class="form-label" for="inventory">Какие предметы и следы вы нашли в кабинете?</label><textarea id="inventory" class="form-control" rows="4" data-note="inventory" maxlength="4000" placeholder="Каждая находка — с новой строки или через точку с запятой">${e(state.notes.inventory ?? '')}</textarea><p class="small text-muted-custom mt-2">Перечислите шесть находок, без выводов о виновности. Проверяются названия предметов; формулировки допускаются разные.</p>
+  return `<label class="form-label" for="inventory">Какие предметы и следы вы нашли на месте преступления?</label><textarea id="inventory" class="form-control" rows="4" data-note="inventory" maxlength="4000" placeholder="Каждая находка — с новой строки или через точку с запятой">${e(state.notes.inventory ?? '')}</textarea><p class="small text-muted-custom mt-2">Перечислите шесть находок из кабинета и участка у окна, без выводов о виновности. Проверяются названия предметов; формулировки допускаются разные.</p>
     ${checked ? `<div class="inventory-results" aria-live="polite">${result.rows.map(row => `<div class="inventory-row ${row.valid ? 'complete' : 'error-text'}"><span aria-hidden="true">${row.valid ? '✓' : '✕'}</span><span>${e(row.text)}</span><small>${row.valid ? `Распознано: ${e(row.labels.join(', '))}` : 'Не совпадает с материалами осмотра'}</small></div>`).join('')}${result.missing.length ? `<p class="error-text mt-2">Не хватает находок: ${e(result.missing.join(', '))}.</p>` : '<p class="complete mt-2">✓ Все шесть находок перечислены.</p>'}</div>` : ''}`;
 }
 export function renderStage(state) {
