@@ -4,6 +4,7 @@ import { canOpenEvidence, sceneProgress } from './case.js';
 import { escapeHTML as e } from './dom.js';
 import { renderRoomSearch } from './search-scene.js';
 import { documentExhibits } from './exhibits.js';
+import { renderDossier } from './dossier.js';
 
 export function heading(kicker, title, tag = '') {
   return `<header class="section-heading"><div><p class="eyebrow mb-2">${e(kicker)}</p><h1 class="h2 mb-0" tabindex="-1">${e(title)}</h1></div>${tag ? `<span class="tag">${e(tag)}</span>` : ''}</header>`;
@@ -17,10 +18,11 @@ export function renderEvidencePage(state) {
       return `<article class="evidence-card ${read ? 'is-read' : ''}"><div class="d-flex justify-content-between gap-2"><span class="file-label">${e(item.type)}</span><span class="small-mono">${e(item.number)}</span></div><h2 class="h5">${e(item.title)}</h2><p class="text-muted-custom">${e(item.summary)}</p><div class="card-actions"><button type="button" class="btn ${item.type.startsWith('Конверт') ? 'btn-brass' : 'btn-outline-brass'}" data-evidence="${item.id}">${item.type.startsWith('Конверт') && !read ? 'Открыть конверт' : 'Изучить материал'}</button><span class="status-label ${read ? 'complete' : ''}">${read ? '✓ Изучено' : 'Не изучено'}</span></div></article>`;
     }).join('')}</div>`;
 }
-export function evidenceDocument(state, id) {
+export function evidenceDocument(state, id, options = {}) {
   if (!canOpenEvidence(state, id)) return null;
   const item = evidenceById.get(id);
   const read = state.readEvidence.includes(id);
+  if (id === 'forged') return `${renderDossier(state, options?.dossierPage)}<section class="archive-case-notes mt-4"><h3 class="h6">Сопоставление с делом отеля</h3>${item.paragraphs.map(text => `<p class="text-muted-custom small">${e(text)}</p>`).join('')}</section><div class="mt-3"><button type="button" class="btn btn-brass" data-read-evidence="forged" ${read ? 'disabled' : ''}>${read ? '✓ Материал изучен' : 'Отметить как изученное'}</button></div>`;
   return `<article class="document-sheet"><div class="document-top"><span class="document-stamp">ПОЛИЦИЯ ГРЕНОБЛЯ</span><span>СОЗ-172438 · № ${e(item.number)}</span></div><h3>${e(item.title)}</h3><p class="document-meta">${e(item.date ?? '13 декабря 1928')} · ${e(item.type)}</p>
     ${item.image ? `<figure class="document-portrait"><button type="button" class="image-button" data-portrait="arkadiy" aria-label="Открыть портрет Аркадия"><img src="${e(item.image)}" alt="Портрет Аркадия Вельского" width="300" height="400"></button><figcaption>${e(item.imageCaption)}</figcaption></figure>` : ''}
     ${documentExhibits(item)}${item.paragraphs.map(text => `<p>${e(text)}</p>`).join('')}<p class="document-signature">Приобщено к делу № СОЗ-172438.<br>Подпись следователя ____________________</p></article>

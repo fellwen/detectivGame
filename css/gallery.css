@@ -13,6 +13,10 @@ section { margin-bottom: 54px; }
 .gallery { display: grid; gap: 20px; }
 .rooms-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .items-gallery, .people-gallery { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.archive-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.archive-gallery .wide { grid-column: 1 / -1; }
+.archive-gallery .scan .exhibit-image { padding: 10px; background: #e6d1a9; }
+.archive-gallery .scan img { mix-blend-mode: multiply; filter: sepia(.25) saturate(.75); }
 figure { min-width: 0; margin: 0; border: 1px solid var(--line); background: #18232d; }
 img { display: block; width: 100%; height: auto; }
 figcaption { padding: 16px; font: 15px/1.6 Arial, sans-serif; }
@@ -21,3 +25,4 @@ footer { padding-bottom: 30px; }
 @media (max-width: 900px) { .items-gallery, .people-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .rooms-gallery { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 440px) { .items-gallery, .people-gallery { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) { .archive-gallery { grid-template-columns: minmax(0, 1fr); } }

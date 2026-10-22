@@ -10,6 +10,7 @@ import { renderHome, renderJournal, renderEnding, journalText } from './modules/
 import { byId, escapeHTML, showModal, hideModal, toast } from './modules/dom.js';
 import { normalizeZoom, normalizePan, pickSceneTarget, returnSceneAttributes, fittedSceneWidth } from './modules/search-scene.js';
 import { enlargedExhibit } from './modules/exhibits.js';
+import { dossierPageForKey } from './modules/dossier.js';
 
 const loaded = loadState();
 let state = loaded.state;
@@ -55,12 +56,30 @@ function go(view, stage = null, push = true) {
   app.querySelector('h1')?.focus({ preventScroll: true });
   window.scrollTo({ top: 0, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
 }
-function openEvidence(id, context = null) {
-  const html = evidenceDocument(state, id);
+function openEvidence(id, context = null, dossierPage = 'agent') {
+  const html = evidenceDocument(state, id, { dossierPage });
   if (!html) { toast('Материал закрыт', 'Сначала получите его при осмотре или допросе.'); return; }
   evidenceContext = context ? { ...context, id } : null;
   const back = context ? `<button type="button" class="btn btn-outline-brass mt-3" data-room="${escapeHTML(context.roomId)}" data-scene-id="${escapeHTML(context.sceneId)}" ${returnSceneAttributes(context)}>Вернуться к поиску →</button>` : '';
-  showModal('Материалы дела', html + back);
+  showModal('Материалы дела', html + back, { wide: id === 'forged' });
+}
+function selectDossierPage(pageId, focus = false) {
+  const root = document.querySelector('.archive-dossier');
+  if (!root) return;
+  const tabs = [...root.querySelectorAll('[data-dossier-select]')];
+  const active = tabs.find(tab => tab.dataset.dossierSelect === pageId);
+  if (!active) return;
+  root.dataset.activeDossierPage = pageId;
+  for (const tab of tabs) {
+    const selected = tab === active;
+    tab.classList.toggle('is-active', selected);
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  }
+  root.querySelectorAll('[data-dossier-panel]').forEach(panel => { panel.hidden = panel.dataset.dossierPanel !== pageId; });
+  root.querySelector('#dossierPageStatus').textContent = active.dataset.pageLabel;
+  byId('detailModalBody').scrollTop = 0;
+  if (focus) active.focus({ preventScroll: true });
 }
 function searchContext() {
   const root = document.querySelector('.room-search');
@@ -193,6 +212,7 @@ document.addEventListener('click', event => {
     return;
   }
   if (target.disabled) return;
+  if (target.dataset.dossierSelect) return selectDossierPage(target.dataset.dossierSelect);
   if (target.dataset.searchTarget) return findSceneTarget(target.dataset.searchTarget);
   if (target.hasAttribute('data-search-hint')) return showSearchHint();
   if (target.dataset.zoomStep) {
@@ -209,10 +229,10 @@ document.addEventListener('click', event => {
       zoom: normalizeZoom(target.dataset.returnZoom ?? current?.zoom),
       panX: normalizePan(target.dataset.returnPanX ?? current?.panX),
       panY: normalizePan(target.dataset.returnPanY ?? current?.panY)
-    } : null);
+    } : null, target.dataset.dossierReturn);
   }
   if (target.dataset.exhibit) {
-    const html = enlargedExhibit(state, target.dataset.exhibit, Number(target.dataset.exhibitIndex), evidenceContext?.id === target.dataset.exhibit ? evidenceContext : null);
+    const html = enlargedExhibit(state, target.dataset.exhibit, Number(target.dataset.exhibitIndex), evidenceContext?.id === target.dataset.exhibit ? evidenceContext : null, target.dataset.dossierPage);
     if (html) showModal('Крупный план предмета', html);
     return;
   }
@@ -229,6 +249,15 @@ document.addEventListener('click', event => {
     target.disabled = true; target.textContent = '✓ Протокол изучен'; render(); persist(true); return;
   }
   if (target.dataset.action) action(target.dataset.action);
+});
+
+document.addEventListener('keydown', event => {
+  const tab = event.target.closest?.('[data-dossier-select]');
+  if (!tab) return;
+  const page = dossierPageForKey(tab.dataset.dossierSelect, event.key);
+  if (!page) return;
+  event.preventDefault();
+  selectDossierPage(page, true);
 });
 
 document.addEventListener('input', event => {

@@ -3,9 +3,11 @@ import { sceneByKey, sceneKey, targetByKey, targetKey } from '../data/scenes.js'
 import { canOpenEvidence } from './case.js';
 import { escapeHTML as e } from './dom.js';
 import { returnSceneAttributes } from './search-scene.js';
+import { dossierPageById } from '../data/dossier.js';
 
 export function renderExhibit(item, image) {
-  return `<span class="exhibit-image ${image.letter ? 'letter-image' : ''}"><img src="${e(image.src)}" alt="${e(image.caption)}" loading="lazy" decoding="async">${image.letter ? `<span class="letter-content">${item.letterLines.map(line => `<span>${e(line)}</span>`).join('')}</span>` : ''}</span>`;
+  const dimensions = Number.isInteger(image.width) && Number.isInteger(image.height) && image.width > 0 && image.height > 0 ? `width="${image.width}" height="${image.height}"` : '';
+  return `<span class="exhibit-image ${image.letter ? 'letter-image' : ''}"><img src="${e(image.src)}" alt="${e(image.caption)}" ${dimensions} loading="lazy" decoding="async">${image.letter ? `<span class="letter-content">${item.letterLines.map(line => `<span>${e(line)}</span>`).join('')}</span>` : ''}</span>`;
 }
 
 export function sceneCrop(item) {
@@ -24,10 +26,12 @@ export function documentExhibits(item) {
   return `${item.exhibits?.length ? `<div class="document-exhibits">${item.exhibits.map((image, index) => `<figure><button type="button" class="image-button" data-exhibit="${item.id}" data-exhibit-index="${index}" aria-label="Увеличить: ${e(image.caption)}">${renderExhibit(item, image)}</button><figcaption>${e(image.caption)}</figcaption></figure>`).join('')}</div>` : ''}${sceneCrop(item)}`;
 }
 
-export function enlargedExhibit(state, id, index, context = null) {
+export function enlargedExhibit(state, id, index, context = null, returnDossierPage = '') {
   if (!canOpenEvidence(state, id) || !Number.isInteger(index)) return null;
   const item = evidenceById.get(id), image = item.exhibits?.[index];
   if (!image) return null;
   const back = returnSceneAttributes(context);
-  return `<figure class="large-exhibit">${renderExhibit(item, image)}<figcaption>${e(image.caption)}</figcaption></figure><button type="button" class="btn btn-outline-brass" data-evidence="${id}" ${back}>К материалу дела</button>`;
+  const page = id === 'forged' && dossierPageById.has(returnDossierPage) ? `data-dossier-return="${returnDossierPage}"` : '';
+  const original = image.originalSize ? `<a class="btn btn-outline-brass" href="${e(image.src)}" target="_blank" rel="noopener noreferrer">Открыть в полном размере ↗</a>` : '';
+  return `<figure class="large-exhibit ${image.scan ? 'archive-large-scan' : ''}">${renderExhibit(item, image)}<figcaption>${e(image.caption)}</figcaption></figure><div class="d-flex flex-wrap gap-2"><button type="button" class="btn btn-outline-brass" data-evidence="${id}" ${back} ${page}>К материалу дела</button>${original}</div>`;
 }
